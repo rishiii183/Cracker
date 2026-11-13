@@ -1,0 +1,276 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Workspace {
+  id                  String               @id @default(cuid())
+  name                String
+  createdAt           DateTime             @default(now())
+  members             WorkspaceMember[]
+  leads               Lead[]
+  tags                Tag[]
+  todos               Todo[]
+  activityEntries     ActivityEntry[]
+  outreachTemplates   OutreachTemplate[]
+  followUpTemplates   FollowUpTemplate[]
+  settings            Setting?
+  stages              Stage[]
+  channels            ChannelConfig[]
+  savedImportMappings SavedImportMapping[]
+}
+
+model User {
+  id             String            @id @default(cuid())
+  name           String
+  email          String            @unique
+  avatarUrl      String?
+  role           String            @default("Member") // Admin or Member
+  createdAt      DateTime          @default(now())
+  memberships    WorkspaceMember[]
+  todosAssigned  Todo[]            @relation("TodoAssignee")
+  todosCreated   Todo[]            @relation("TodoCreator")
+  todoComments   TodoComment[]
+  activityLogs   ActivityEntry[]   @relation("ActivityAuthor")
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String    @default("Member") // Admin or Member
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model Lead {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  leadCode      String         // e.g. LEAD-0830
+  companyName   String
+  contactName   String?
+  country       String?
+  location      String?
+  industry      String?
+  employeeCount String?
+  revenue       String?
+  foundedYear   String?
+  website       String?
+  channel       String         @default("Instagram") // Email, Instagram, LinkedIn
+  stage         String         @default("New") // New, Researching, Email Drafted, Contacted, Following up, Replied, Resource sent, Not Interested, Not in a priority
+  status        String         @default("new") // new, in_progress, on_hold, won, lost
+  priority      String         @default("Medium") // Low, Medium, High
+  addedBy       String         @default("System")
+  senderAccount String?        @default("None")
+  dateAdded     DateTime       @default(now())
+  lastContacted DateTime?
+  lastActivity  DateTime       @default(now())
+  checked       Boolean        @default(false)
+  checkedBy     String?
+  checkedAt     DateTime?
+  archived      Boolean        @default(false)
+  archivedAt    DateTime?
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  people        LeadPerson[]
+  emails        LeadEmail[]
+  tags          LeadTag[]
+  followUps     FollowUp[]
+  outreachMarks OutreachMark[]
+  notes         LeadNote[]
+  todos         Todo[]
+  activities    ActivityEntry[]
+
+  @@index([workspaceId, archived])
+  @@index([stage])
+  @@index([channel])
+}
+
+model LeadPerson {
+  id            String   @id @default(cuid())
+  leadId        String
+  name          String
+  titleRole     String?
+  linkedin      String?
+  email         String?
+  emailVerified Boolean  @default(false)
+  isMain        Boolean  @default(false)
+  lead          Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+model LeadEmail {
+  id                 String   @id @default(cuid())
+  leadId             String
+  email              String
+  isMain             Boolean  @default(false)
+  verificationStatus String   @default("Unverified") // Deliverable, Risky, Unverified, No email
+  lead               Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+model LeadTag {
+  id     String @id @default(cuid())
+  leadId String
+  tag    String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, tag])
+}
+
+model Tag {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+}
+
+model FollowUp {
+  id         String    @id @default(cuid())
+  leadId     String
+  stepNumber Int       // 1 to 5
+  dueDate    DateTime?
+  channel    String?   // Email, Instagram, LinkedIn
+  templateId String?
+  notes      String?
+  sent       Boolean   @default(false)
+  sentAt     DateTime?
+  sentBy     String?
+  lead       Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, stepNumber])
+}
+
+model OutreachMark {
+  id      String    @id @default(cuid())
+  leadId  String
+  type    String    // Connection request, LinkedIn message, LinkedIn reply, Instagram message, Instagram reply, Email sent, Email viewed, Email reply, Loom sent, Loom watched, Meeting booked, Client closed
+  done    Boolean   @default(false)
+  doneAt  DateTime?
+  lead    Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, type])
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String   // Research or Additional
+  text      String
+  updatedBy String?
+  updatedAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+model Todo {
+  id          String        @id @default(cuid())
+  workspaceId String
+  title       String
+  description String?
+  dueDate     DateTime?
+  assigneeId  String?
+  leadId      String?
+  completed   Boolean       @default(false)
+  completedAt DateTime?
+  createdBy   String?
+  createdAt   DateTime      @default(now())
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignee    User?         @relation("TodoAssignee", fields: [assigneeId], references: [id])
+  creator     User?         @relation("TodoCreator", fields: [createdBy], references: [id])
+  lead        Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  comments    TodoComment[]
+}
+
+model TodoComment {
+  id        String   @id @default(cuid())
+  todoId    String
+  authorId  String
+  text      String
+  createdAt DateTime @default(now())
+  todo      Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model ActivityEntry {
+  id          String    @id @default(cuid())
+  workspaceId String
+  leadId      String?
+  type        String    // Lead created, Email sent, Instagram message sent, Follow up sent, Stage changed, etc.
+  category    String    @default("Outreach") // Outreach, Replies, Stage and status, Notes and calls, Other
+  text        String
+  details     String?
+  authorId    String?
+  authorName  String    @default("User")
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  author      User?     @relation("ActivityAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+}
+
+model OutreachTemplate {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  name            String
+  channel         String    // Email, Instagram, LinkedIn
+  messageTemplate String
+  createdBy       String?
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model FollowUpTemplate {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  isDefault   Boolean   @default(false)
+  stepsJson   String    // JSON array of [{ dayOffset, channel, name }]
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Setting {
+  id                      String    @id @default(cuid())
+  workspaceId             String    @unique
+  defaultLeadView         String    @default("Table") // Table, Columns, Cards
+  defaultLandingModule    String    @default("Lead Tracker") // Lead Tracker, CRM
+  theme                   String    @default("light") // light, dark
+  googleSheetUrl          String?   @default("https://docs.google.com/spreadsheets/d/demo")
+  googleDriveFolder       String?
+  notificationPreferences String?   @default("{\"followUpComplete\":true,\"followUpMissed\":false,\"followUpResponse\":false,\"dailySummary\":false,\"weeklySummary\":false,\"weeklyGoalAchieved\":false,\"weeklyGoalMissed\":false,\"dailyOutreachStreak\":false}")
+  sectionVisibility       String?   @default("{\"company\":true,\"people\":true,\"emails\":true,\"todos\":true,\"research\":true,\"emailLoom\":true,\"followups\":true,\"outreach\":true,\"outcome\":true,\"tags\":true,\"activity\":true,\"personalizedMessage\":true}")
+  workspace               Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Stage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  order       Int
+  color       String?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+}
+
+model ChannelConfig {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  enabled     Boolean   @default(true)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+}
+
+model SavedImportMapping {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  mappingJson String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
